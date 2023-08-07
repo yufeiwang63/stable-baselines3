@@ -425,7 +425,7 @@ class ActorCriticPolicy(BasePolicy):
         action_space: spaces.Space,
         lr_schedule: Schedule,
         net_arch: Optional[Union[List[int], Dict[str, List[int]]]] = None,
-        activation_fn: Type[nn.Module] = nn.Tanh,
+        activation_fn: Type[nn.Module] = nn.ReLU,
         ortho_init: bool = True,
         use_sde: bool = False,
         log_std_init: float = 0.0,
@@ -471,7 +471,7 @@ class ActorCriticPolicy(BasePolicy):
             if features_extractor_class == NatureCNN:
                 net_arch = []
             else:
-                net_arch = dict(pi=[64, 64], vf=[64, 64])
+                net_arch = dict(pi=[256, 256], vf=[256, 256])
 
         self.net_arch = net_arch
         self.activation_fn = activation_fn

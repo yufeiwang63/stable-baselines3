@@ -2,6 +2,10 @@ import os
 import warnings
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, List, Optional, Union
+from bullet_sim.utils import save_numpy_as_gif
+import pandas as pd 
+from matplotlib import pyplot as plt
+import torch
 
 import gymnasium as gym
 import numpy as np
@@ -356,7 +360,7 @@ class EvalCallback(EventCallback):
         eval_env: Union[gym.Env, VecEnv],
         callback_on_new_best: Optional[BaseCallback] = None,
         callback_after_eval: Optional[BaseCallback] = None,
-        n_eval_episodes: int = 5,
+        n_eval_episodes: int = 2,
         eval_freq: int = 10000,
         log_path: Optional[str] = None,
         best_model_save_path: Optional[str] = None,
@@ -431,7 +435,37 @@ class EvalCallback(EventCallback):
     def _on_step(self) -> bool:
         continue_training = True
 
-        if self.eval_freq > 0 and self.n_calls % self.eval_freq == 0:
+        # import pdb;pdb.set_trace()
+        if self.eval_freq > 0 and (self.n_calls - 1) % self.eval_freq == 0:
+            # plot training curves
+            pandas_file = os.path.join(os.path.dirname(self.log_path), "progress.csv")
+            try:
+                csv = pd.read_csv(pandas_file)
+                ### get the value of rollout/ep_rew_mean
+                y = csv["rollout/ep_rew_mean"].values
+                ### get the value of time/total_timesteps
+                x = csv["time/total_timesteps"].values
+
+                if len(x) > 0:
+                    # Mean training reward over the last 100 episodes
+                    mean_reward = np.mean(y[-100:])
+                    if self.verbose > 0:
+                        print("Num timesteps: {}".format(self.num_timesteps))
+                        print(
+                            "Best mean reward: {:.2f} - Last mean reward per episode: {:.2f}".format(
+                                self.best_mean_reward, mean_reward
+                            )
+                        )
+
+                    fig = plt.figure(figsize=(6,3))
+                    ax = fig.add_subplot(111)
+                    line, = ax.plot(x, y)
+                    plt.savefig("{}/{}.png".format(os.path.dirname(self.log_path), self.n_calls))
+                    plt.close("all")
+            except:
+                pass
+
+
             # Sync training and eval env if there is VecNormalize
             if self.model.get_vec_normalize_env() is not None:
                 try:
@@ -446,7 +480,7 @@ class EvalCallback(EventCallback):
             # Reset success rate buffer
             self._is_success_buffer = []
 
-            episode_rewards, episode_lengths = evaluate_policy(
+            episode_rewards, episode_lengths, rgbs = evaluate_policy(
                 self.model,
                 self.eval_env,
                 n_eval_episodes=self.n_eval_episodes,
@@ -476,6 +510,10 @@ class EvalCallback(EventCallback):
                     **kwargs,
                 )
 
+                save_numpy_as_gif(np.array(rgbs), "{}/{}_{}.gif".format(os.path.dirname(self.log_path), self.n_calls, np.mean(episode_rewards)))
+                torch.save(self.model.policy.state_dict(), os.path.join(self.best_model_save_path, "{}.pt".format(self.n_calls)))
+
+
             mean_reward, std_reward = np.mean(episode_rewards), np.std(episode_rewards)
             mean_ep_length, std_ep_length = np.mean(episode_lengths), np.std(episode_lengths)
             self.last_mean_reward = mean_reward
@@ -502,6 +540,7 @@ class EvalCallback(EventCallback):
                     print("New best mean reward!")
                 if self.best_model_save_path is not None:
                     self.model.save(os.path.join(self.best_model_save_path, "best_model"))
+                    torch.save(self.model.policy.state_dict(), os.path.join(self.best_model_save_path, "best_model_torch_weights.pt"))
                 self.best_mean_reward = mean_reward
                 # Trigger callback on new best model, if needed
                 if self.callback_on_new_best is not None:

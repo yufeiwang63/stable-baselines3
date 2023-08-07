@@ -84,6 +84,8 @@ def evaluate_policy(
     observations = env.reset()
     states = None
     episode_starts = np.ones((env.num_envs,), dtype=bool)
+    
+    rgbs = []
     while (episode_counts < episode_count_targets).any():
         actions, states = model.predict(
             observations,  # type: ignore[arg-type]
@@ -94,6 +96,11 @@ def evaluate_policy(
         new_observations, rewards, dones, infos = env.step(actions)
         current_rewards += rewards
         current_lengths += 1
+
+        # import pdb; pdb.set_trace()
+        rgb = env.envs[0].render()[0][:, :, :3]
+        rgbs.append(rgb)
+
         for i in range(n_envs):
             if episode_counts[i] < episode_count_targets[i]:
                 # unpack values so that the callback can access the local variables
@@ -135,5 +142,5 @@ def evaluate_policy(
     if reward_threshold is not None:
         assert mean_reward > reward_threshold, "Mean reward below threshold: " f"{mean_reward:.2f} < {reward_threshold:.2f}"
     if return_episode_rewards:
-        return episode_rewards, episode_lengths
-    return mean_reward, std_reward
+        return episode_rewards, episode_lengths, rgbs
+    return mean_reward, std_reward, rgbs
