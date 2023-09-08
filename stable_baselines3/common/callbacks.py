@@ -2,10 +2,11 @@ import os
 import warnings
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, List, Optional, Union
-from bullet_sim.utils import save_numpy_as_gif
+from bullet_sim.utils import save_numpy_as_gif, save_env
 import pandas as pd 
 from matplotlib import pyplot as plt
 import torch
+import pybullet as p
 
 import gymnasium as gym
 import numpy as np
@@ -539,8 +540,12 @@ class EvalCallback(EventCallback):
                 if self.verbose >= 1:
                     print("New best mean reward!")
                 if self.best_model_save_path is not None:
-                    self.model.save(os.path.join(self.best_model_save_path, "best_model"))
+                    self.model.save(os.path.join(self.best_model_save_path, "best_model.pt"))
                     torch.save(self.model.policy.state_dict(), os.path.join(self.best_model_save_path, "best_model_torch_weights.pt"))
+                    # p.saveBullet("{}/{}.bullet".format(self.best_model_save_path, "best_final_state.bullet"))
+                    save_env(self.eval_env.envs[0], "{}/{}".format(self.best_model_save_path, "best_final_state.pkl"))
+                    save_numpy_as_gif(np.array(rgbs), "{}/best.gif".format(os.path.dirname(self.log_path)))
+
                 self.best_mean_reward = mean_reward
                 # Trigger callback on new best model, if needed
                 if self.callback_on_new_best is not None:
