@@ -2,7 +2,9 @@ import os
 import warnings
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, List, Optional, Union
-from bullet_sim.utils import save_numpy_as_gif, save_env
+# from bullet_sim.utils import save_numpy_as_gif, save_env
+from moviepy.editor import ImageSequenceClip
+import pickle
 import pandas as pd 
 from matplotlib import pyplot as plt
 import torch
@@ -27,6 +29,92 @@ except ImportError:
 from stable_baselines3.common import base_class  # pytype: disable=pyi-error
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.vec_env import DummyVecEnv, VecEnv, sync_envs_normalization
+
+def save_numpy_as_gif(array, filename, fps=20, scale=1.0):
+    """Creates a gif given a stack of images using moviepy
+    Notes
+    -----
+    works with current Github version of moviepy (not the pip version)
+    https://github.com/Zulko/moviepy/commit/d4c9c37bc88261d8ed8b5d9b7c317d13b2cdf62e
+    Usage
+    -----
+    >>> X = randn(100, 64, 64)
+    >>> gif('test.gif', X)
+    Parameters
+    ----------
+    filename : string
+        The filename of the gif to write to
+    array : array_like
+        A numpy array that contains a sequence of images
+    fps : int
+        frames per second (default: 10)
+    scale : float
+        how much to rescale each image by (default: 1.0)
+    """
+
+    # ensure that the file has the .gif extension
+    fname, _ = os.path.splitext(filename)
+    filename = fname + '.gif'
+
+    # copy into the color dimension if the images are black and white
+    if array.ndim == 3:
+        array = array[..., np.newaxis] * np.ones(3)
+
+    # make the moviepy clip
+    clip = ImageSequenceClip(list(array), fps=fps).resize(scale)
+    clip.write_gif(filename, fps=fps)
+    return clip
+
+def save_env(env, save_path=None):
+    object_joint_angle_dicts = {}
+    object_joint_name_dicts = {}
+    object_link_name_dicts = {}
+    for obj_name, obj_id in env.urdf_ids.items():
+        num_links = p.getNumJoints(obj_id, physicsClientId=env.id)
+        object_joint_angle_dicts[obj_name] = []
+        object_joint_name_dicts[obj_name] = []
+        object_link_name_dicts[obj_name] = []
+        for link_idx in range(0, num_links):
+            joint_angle = p.getJointState(obj_id, link_idx, physicsClientId=env.id)[0]
+            object_joint_angle_dicts[obj_name].append(joint_angle)
+            joint_name = p.getJointInfo(obj_id, link_idx, physicsClientId=env.id)[1].decode('utf-8')
+            object_joint_name_dicts[obj_name].append(joint_name)
+            link_name = p.getJointInfo(obj_id, link_idx, physicsClientId=env.id)[12].decode('utf-8')
+            object_link_name_dicts[obj_name].append(link_name)
+
+    object_base_position = {}
+    for obj_name, obj_id in env.urdf_ids.items():
+        object_base_position[obj_name] = p.getBasePositionAndOrientation(obj_id, physicsClientId=env.id)[0]
+
+    object_base_orientation = {}
+    for obj_name, obj_id in env.urdf_ids.items():
+        object_base_orientation[obj_name] = p.getBasePositionAndOrientation(obj_id, physicsClientId=env.id)[1]
+
+    activated = env.activated
+    suction_object_id = env.suction_obj_id
+    suction_contact_link = env.suction_contact_link
+    suction_to_obj_pose = env.suction_to_obj_pose
+
+    state = {
+        'object_joint_angle_dicts': object_joint_angle_dicts,
+        'object_joint_name_dicts': object_joint_name_dicts,
+        'object_link_name_dicts': object_link_name_dicts,
+        'object_base_position': object_base_position,
+        'object_base_orientation': object_base_orientation,     
+        'activated': activated,
+        'suction_object_id': suction_object_id,
+        'suction_contact_link': suction_contact_link,
+        'suction_to_obj_pose': suction_to_obj_pose,
+        "urdf_paths": env.urdf_paths,
+        "object_sizes": env.simulator_sizes
+    }
+
+    if save_path is not None:
+        with open(save_path, 'wb') as f:
+            pickle.dump(state, f, pickle.HIGHEST_PROTOCOL)
+
+    return state
+
 
 
 class BaseCallback(ABC):
